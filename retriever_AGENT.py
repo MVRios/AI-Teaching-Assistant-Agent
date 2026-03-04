@@ -5,7 +5,8 @@ from langgraph.prebuilt import ToolNode
 from langgraph.graph import START, StateGraph
 from langgraph.prebuilt import tools_condition
 from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
+import google.genai
 import os
 from datetime import datetime
 import re
@@ -15,11 +16,33 @@ from IPython.display import display, Image
 
 load_dotenv()
 
-os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
+#DEBUG
+from dotenv import load_dotenv
 
-llm = ChatOpenAI(
-    model="gpt-4o-mini",  
-    temperature=0
+load_dotenv()
+
+client = google.genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+try:
+    response = client.models.generate_content(
+        model='gemini-2.5-pro', 
+        contents="Hola, responde con la palabra 'CONECTADO' si me escuchas."
+    )
+    
+    print("✓ Conexión exitosa:", response.text)
+except Exception as e:
+    print(f"❌ Error real: {e}")
+
+
+# Initialize Gemini LLM
+gemini_api_key = os.getenv("GEMINI_API_KEY")
+if not gemini_api_key:
+    raise ValueError("❌ GEMINI_API_KEY not found in .env file. Please add your Gemini API key.")
+
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-pro",
+    google_api_key=gemini_api_key,
+    temperature=0,
 )
 
 chat = llm

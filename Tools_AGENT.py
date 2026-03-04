@@ -7,30 +7,84 @@ import re
 from sentence_transformers import SentenceTransformer
 from langchain_community.vectorstores import FAISS
 from langchain.embeddings.base import Embeddings
+import gspread
+from google.oauth2.service_account import Credentials
+import os
+from dotenv import load_dotenv
+from langchain_community.tools import DuckDuckGoSearchRun
+from guardrails_validators import SabrinalValidator
 
-df_students = pd.read_excel("Students.xlsx") 
-df_payment = pd.read_excel("Payment.xlsx")  
-df_alerts = pd.read_excel("Alerts.xlsx")
+# Load environment variables 
+load_dotenv()
 
-# ------------------------------ Tool to get student information 
+# --- Google Sheets connection ---
 
-docs = [
-    Document(
-        page_content="\n".join([
-            f"ID Student: {row['ID Student']}",
-            f"Student: {row['Student']}",
-            f"Parents name: {row['Parents name']}",
-            f"WhatsApp: {row['WhatsApp']}",
-            f"Day of the week: {row['Day of the week']}",
-            f"Hour: {row['Hour']}",
-            f"Class type: {row['Class type']}",
-            f"Comments: {row['Comments']}",
-            ]),
-        metadata={"Student": row["Student"]}
-    )
-    for _, row in df_students.iterrows()
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
 ]
 
+creds = Credentials.from_service_account_file(
+    "credentials.json",  
+    scopes=SCOPES
+)
+
+client = gspread.authorize(creds)
+
+# Open the spreadsheets
+SPREADSHEET_ID1 = os.getenv("GOOGLE_SHEET_ID1")
+SPREADSHEET_ID2 = os.getenv("GOOGLE_SHEET_ID2")
+SPREADSHEET_ID3 = os.getenv("GOOGLE_SHEET_ID3")
+
+
+students_sheet = client.open_by_key(SPREADSHEET_ID1).sheet1
+payment_sheet = client.open_by_key(SPREADSHEET_ID2).sheet1
+alerts_sheet = client.open_by_key(SPREADSHEET_ID3).sheet1
+
+# Convert to DataFrames
+df_students = pd.DataFrame(students_sheet.get_all_records())
+df_payment = pd.DataFrame(payment_sheet.get_all_records())
+df_alerts = pd.DataFrame(alerts_sheet.get_all_records())
+
+# Reload_data function to update sheets
+
+def reload_data():
+    global df_students, df_payment, df_alerts
+    global docs, vectorstore, semantic_retriever, bm25_retriever
+
+    df_students = pd.DataFrame(students_sheet.get_all_records())
+    df_payment = pd.DataFrame(payment_sheet.get_all_records())
+    df_alerts = pd.DataFrame(alerts_sheet.get_all_records())
+
+    df_students["ID Student"] = df_students["ID Student"].astype(int)
+    df_payment["ID Student"] = df_payment["ID Student"].astype(int)
+    df_payment["Year"] = df_payment["Year"].astype(int)
+
+    # Rebuild documents
+    docs = [
+        Document(
+            page_content="\n".join([
+                f"ID Student: {row['ID Student']}",
+                f"Student: {row['Student']}",
+                f"Parents name: {row['Parents name']}",
+                f"WhatsApp: {row['WhatsApp']}",
+                f"Day of the week: {row['Day of the week']}",
+                f"Hour: {row['Hour']}",
+                f"Class type: {row['Class type']}",
+                f"Comments: {row['Comments']}",
+            ]),
+            metadata={"Student": row["Student"]}
+        )
+        for _, row in df_students.iterrows()
+    ]
+
+    vectorstore = FAISS.from_documents(docs, embeddings)
+    semantic_retriever = vectorstore.as_retriever(
+        search_type="similarity",
+        search_kwargs={"k": 3}
+    )
+
+    bm25_retriever = BM25Retriever.from_documents(docs)
 
 sbert_model = SentenceTransformer("all-MiniLM-L6-v2")
 
@@ -41,13 +95,29 @@ class SBERTEmbeddings(Embeddings):
         return sbert_model.encode([text])[0].tolist()
 
 embeddings = SBERTEmbeddings()
-vectorstore = FAISS.from_documents(docs, embeddings)
-semantic_retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 3})
 
-bm25_retriever = BM25Retriever.from_documents(docs)
+reload_data()
+
+# --- Initialize Security Validators ---
+validator = SabrinalValidator(df_students)
+print("✓ Security validators initialized")
+
+# ------------------------------ Tool to get student information 
 
 def extract_text(query: str) -> str:
-    print(f"Query received: {query}")
+    """
+    Retrieves student information with mandatory ID verification.
+    Blocks access without explicit Student ID.
+    """
+    reload_data()
+    
+    # SECURITY CHECK: Validate query
+    is_valid, error_message = validator.validate_query(query)
+    if not is_valid:
+        return error_message
+    
+    print(f"✓ Query validated: {query}")
+    
     #Get ID
     match = re.search(
         r"\b(?:id[\s_-]?student|student[\s_-]?id)[:=]?\s*(\d+)\b",
@@ -60,12 +130,8 @@ def extract_text(query: str) -> str:
         if not student_row.empty:
             row = student_row.iloc[0]
             return f"ID Student: {row['ID Student']}\nStudent: {row['Student']}\n Day: {row['Day of the week']}, Hour: {row['Hour']}, Class type: {row['Class type']}\n Comments: {row['Comments']}"
-    #If there is no ID, use semantic search
-    results = semantic_retriever.get_relevant_documents(query)
-    if results:
-        return "\n\n".join([doc.page_content for doc in results[:3]])
-    else:
-        return "No matching student information found."
+    
+    return "No matching student information found."
 
 student_info_tool = Tool(
     name="student_info_retriever",
@@ -78,9 +144,18 @@ student_info_tool = Tool(
 def check_payment_status(query: str) -> str:
     """
     Retrieves the payment status of a student based on a natural language query.
-    Extracts student ID or name, month, and year from the query.
+    Requires explicit Student ID - blocks aggregate data requests.
     """
-    #Get ID
+    reload_data()
+    
+    # SECURITY CHECK: Validate query
+    is_valid, error_message = validator.validate_query(query)
+    if not is_valid:
+        return error_message
+    
+    print(f"✓ Query validated: {query}")
+    
+    # Get ID
     match_id = re.search(
         r"\b(?:id[\s_-]?student|student[\s_-]?id)[:=]?\s*(\d+)\b",
         query,
@@ -88,14 +163,12 @@ def check_payment_status(query: str) -> str:
     )
     student_id = int(match_id.group(1)) if match_id else None
 
-    #Get month and year
+    # Get month and year
     month_match = re.search(r"\b(January|February|March|April|May|June|July|August|September|October|November|December)\b", query, re.IGNORECASE)
     year_match = re.search(r"\b(20\d{2})\b", query)
 
     month = month_match.group(1) if month_match else datetime.now().strftime("%B")
     year = int(year_match.group(1)) if year_match else datetime.now().year
-    
-    print(f"Extracted month: {month}, year: {year}")
 
     #Find the student
     if student_id:
@@ -140,8 +213,6 @@ check_payment_status_tool = Tool(
 
 # ------------------------------ Tool to search topics in internet for recomendations
 
-from langchain_community.tools import DuckDuckGoSearchRun
-
 topic_search_tool = DuckDuckGoSearchRun()
 topic_search_tool.name = "news_web_search"
 topic_search_tool.description = "Searches the web for information on a specific topic to help studying."
@@ -151,16 +222,23 @@ topic_search_tool.description = "Searches the web for information on a specific 
 def create_alert_from_text(query: str) -> str:
     """
     Creates an alert for the teacher to follow up with a parent.
-    Extracts student ID from the query and keeps the full text as reason.
-    """   
+    Requires explicit Student ID - blocks alerts for multiple students.
+    """
+    reload_data()
+    
+    # SECURITY CHECK: Validate query
+    is_valid, error_message = validator.validate_query(query)
+    if not is_valid:
+        return error_message
+    
+    print(f"✓ Query validated: {query}")
+    
     # Get the ID
     match = re.search(
         r"\b(?:id[\s_-]?student|student[\s_-]?id)[:=]?\s*(\d+)\b",
         query,
         re.IGNORECASE
     )
-    print(f"Query received: {query}")
-    print(f"Regex match result: {match}")
     
     if match:
         student_id = int(match.group(1))
@@ -194,7 +272,8 @@ def create_alert_from_text(query: str) -> str:
 
     global df_alerts
     df_alerts = pd.concat([df_alerts, pd.DataFrame([new_alert])], ignore_index=True)
-    df_alerts.to_excel("Alerts.xlsx", index=False)
+    alerts_sheet.clear()
+    alerts_sheet.update([df_alerts.columns.values.tolist()] + df_alerts.values.tolist())
 
     return f"Alert created for {student_name} (Parent: {parent_name}). Reason: {reason}"
 
@@ -212,10 +291,18 @@ from langchain.tools import Tool
 
 def record_payment(query: str) -> str:
     """
-    Registers a payment or updates the status for a student based on a natural language query.
-    Extracts student ID, month, and year from the query.
-    Updates the payment record and triggers an alert for teacher confirmation.
+    Registers a payment or updates the status for a student.
+    Requires explicit Student ID - blocks bulk payment operations.
     """
+    reload_data()
+    
+    # SECURITY CHECK: Validate query
+    is_valid, error_message = validator.validate_query(query)
+    if not is_valid:
+        return error_message
+    
+    print(f"✓ Query validated: {query}")
+    
     #Get ID
     match_id = re.search(
         r"\b(?:id[\s_-]?student|student[\s_-]?id)[:=]?\s*(\d+)\b",
@@ -262,7 +349,8 @@ def record_payment(query: str) -> str:
         return f"The payment for {student_name} (ID {student_id}) in {month}/{year} is already registered as Paid."
     else:
         df_payment.loc[idx, 'State'] = "To confirm"
-        df_payment.to_excel("Payment.xlsx", index=False)
+        payment_sheet.clear()
+        payment_sheet.update([df_payment.columns.values.tolist()] + df_payment.values.tolist())
 
         # Create an alert for the teacher to confirm the payment
         alert_reason = f"Payment reported for {student_name} (ID {student_id}) for {month}/{year}. Requires confirmation."
@@ -280,12 +368,3 @@ record_payment_tool = Tool(
     func=record_payment,
     description="Registers or updates the payment status of a student for a specific month and year based on a natural language query, and creates an alert for teacher confirmation."
 )
-
-
-
-#Tests
-#print("IDs en df_alumnos:", df_alumnos["ID Student"].tolist())
-#print(extract_student_info(student_id=2))
-#print(check_payment_status(student_id=2))
-#query = "Hi, I am Daiana's mother, ID Student 4. Does Maca have any comments for me?"
-#print(extract_text(query))
