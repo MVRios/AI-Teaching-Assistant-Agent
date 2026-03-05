@@ -269,6 +269,7 @@ Searches web for learning recommendations.
 
 
 ## 👤 Author
-**Victoria Ríos**
-- Created: October 2025
+
+- Author: **Victoria Ríos**
+- Last update: **March 2026** 
 
