@@ -268,8 +268,6 @@ Searches web for learning recommendations.
 
 
 
-## 👤 Author
 
-- Author: **Victoria Ríos**
-- Last update: **March 2026** 
-
+✍️ Author: *Maria Victoria Rios*  
+📅 Last update: **March 2026**
