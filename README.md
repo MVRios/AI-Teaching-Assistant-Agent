@@ -268,6 +268,7 @@ Searches web for learning recommendations.
 
 
 
+## Author
 
-✍️ Author: *Maria Victoria Rios*  
+✍️ Author: **Victoria Rios**
 📅 Last update: **March 2026**
