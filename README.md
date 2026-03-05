@@ -1,6 +1,6 @@
-# 🎓 Sabrina - AI Teaching Assistant Agent
+# 🎓 AI Teaching Assistant Agent
 
-A conversational AI agent designed to help private tutors manage student information, payments, and parent communication efficiently. Sabrina integrates with Google Sheets for real-time data management and uses LangGraph for intelligent conversation flow.
+A conversational AI agent designed to help private tutors manage student information, payments, and parent communication efficiently. It integrates with Google Sheets for real-time data management and uses LangGraph for intelligent conversation flow.
 
 
 
@@ -29,7 +29,7 @@ A conversational AI agent designed to help private tutors manage student informa
 
 ## Architecture
 
-Sabrina is built using **LangGraph**, an orchestration framework that handles:
+This agent is built using **LangGraph**, an orchestration framework that handles:
 - **Multi-turn conversations** with state management
 - **Tool calling** with intelligent routing
 - **Error handling** and conversation recovery
@@ -51,7 +51,7 @@ Back to Assistant (if needed)
 
 ## Google Sheets Integration & Setup
 
-**Sabrina requires a live connection to Google Sheets** to access and manage student, payment, and alert data in real-time. This document assumes you have the following Google Sheets setup:
+**The agent requires a live connection to Google Sheets** to access and manage student, payment, and alert data in real-time. This document assumes you have the following Google Sheets setup:
 - **Students Sheet** - Contains student information (ID, name, parents, schedule, comments)
 - **Payments Sheet** - Tracks payment status by month/year
 - **Alerts Sheet** - Stores parent communication alerts
@@ -62,7 +62,7 @@ To set up Google Sheets integration, you need:
 
 1. **Google Cloud Project** - Create a new project in [Google Cloud Console](https://console.cloud.google.com)
 2. **Enable Google Sheets API** - Enable the Sheets API in your project settings
-3. **Service Account** - Create a Service Account and generate a JSON key file (this gives Sabrina permission to access your sheets)
+3. **Service Account** - Create a Service Account and generate a JSON key file (this gives the agent permission to access your sheets)
 4. **Shared Spreadsheets** - Share your Google Sheets with the Service Account email address (found in the JSON credentials file)
 5. **Environment Variables** - Configure `.env` file with spreadsheet IDs and API credentials
 
@@ -86,7 +86,7 @@ GOOGLE_SHEET_ID_3=your_third_spreadsheet_id
 
 ## Security Guardrails
 
-Sabrina implements **strict security validation** to protect student data privacy:
+The agent implements **strict security validation** to protect student data privacy:
 
 ### Mandatory Student ID Verification
 - ✅ **Every query requires an explicit Student ID** - prevents unauthorized data access
@@ -123,7 +123,7 @@ This runs 8 security test cases verifying:
 ## Project Structure
 
 ```
-SabrinaAgent/
+AI Teaching Assistant Agent/
 ├── Tools_AGENT.py              # All tools with security validation
 ├── retriever_AGENT.py          # Agent setup, LangGraph orchestration
 ├── guardrails_validators.py    # Security validation logic
@@ -132,8 +132,8 @@ SabrinaAgent/
 ├── test_guardrails.py          # Security guardrails tests
 ├── requirements.txt            # Python dependencies
 ├── .gitignore                  # Git ignore rules
-├── sabrina_graph.dot           # Graph visualization
-├── sabrina_graph.png           # Visual representation
+├── Agent_graph.dot           # Graph visualization
+├── Agent_graph.png           # Visual representation
 ```
 
 ## Usage
@@ -147,25 +147,25 @@ python Test_AGENT.py
 ### Example Interactions
 
 ```python
-from retriever_AGENT import Sabrina
+from retriever_AGENT import Agent
 
 # Example 1: Get student info
-response = Sabrina.invoke({
+response = Agent.invoke({
     "messages": [HumanMessage(content="What is the schedule for Student ID 2?")]
 })
 
 # Example 2: Check payment
-response = Sabrina.invoke({
+response = Agent.invoke({
     "messages": [HumanMessage(content="Did Student ID 3 pay March 2025?")]
 })
 
 # Example 3: Record payment
-response = Sabrina.invoke({
+response = Agent.invoke({
     "messages": [HumanMessage(content="Student ID 1 paid February 2025")]
 })
 
 # Example 4: Create alert
-response = Sabrina.invoke({
+response = Agent.invoke({
     "messages": [HumanMessage(content="Student ID 4 missed 3 classes and parent must contact immediately")]
 })
 ```
