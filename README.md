@@ -146,26 +146,28 @@ python Test_AGENT.py
 
 ### Example Interactions
 
+[Agent was named as Sabirna]
+
 ```python
-from retriever_AGENT import Agent
+from retriever_AGENT import Sabrina
 
 # Example 1: Get student info
-response = Agent.invoke({
+response = Sabrina.invoke({
     "messages": [HumanMessage(content="What is the schedule for Student ID 2?")]
 })
 
 # Example 2: Check payment
-response = Agent.invoke({
+response = Sabrina.invoke({
     "messages": [HumanMessage(content="Did Student ID 3 pay March 2025?")]
 })
 
 # Example 3: Record payment
-response = Agent.invoke({
+response = Sabrina.invoke({
     "messages": [HumanMessage(content="Student ID 1 paid February 2025")]
 })
 
 # Example 4: Create alert
-response = Agent.invoke({
+response = Sabrina.invoke({
     "messages": [HumanMessage(content="Student ID 4 missed 3 classes and parent must contact immediately")]
 })
 ```
